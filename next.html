@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Steganography Tool</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .output {
+        min-height: 100px;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100">
+    <div class="container mx-auto p-4">
+      <h1 class="text-2xl font-bold mb-4">Steganography Tool</h1>
+      <div>
+        <label for="fileInput" class="block mb-2"
+          >画像ファイルを選択してください：</label
+        >
+        <input type="file" id="fileInput" class="mb-4" />
+      </div>
+      <div>
+        <label for="messageInput" class="block mb-2"
+          >メッセージを入力してください：</label
+        >
+        <input
+          type="text"
+          id="messageInput"
+          class="w-full py-2 px-4 rounded mb-4"
+        />
+      </div>
+      <div>
+        <button
+          id="embedButton"
+          class="bg-blue-500 text-white py-2 px-4 rounded mr-2"
+        >
+          メッセージを埋め込む
+        </button>
+        <button
+          id="extractButton"
+          class="bg-blue-500 text-white py-2 px-4 rounded"
+        >
+          メッセージを抽出する
+        </button>
+      </div>
+      <div class="output mt-4">
+        <pre id="outputArea" class="bg-gray-200 p-4"></pre>
+      </div>
+    </div>
+
+    <script>
+      document
+        .getElementById("embedButton")
+        .addEventListener("click", function () {
+          const fileInput = document.getElementById("fileInput");
+          const file = fileInput.files[0];
+          if (!file) {
+            alert("ファイルを選択してください。");
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const img = new Image();
+            img.onload = function () {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0);
+              const imageData = ctx.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+              );
+              const message = document.getElementById("messageInput").value;
+              const binaryMessage = textToBinary(message);
+              embedMessage(imageData, binaryMessage);
+              ctx.putImageData(imageData, 0, 0);
+              const dataUrl = canvas.toDataURL("image/png");
+              const link = document.createElement("a");
+              link.href = dataUrl;
+              const fileName = file.name.split(".").slice(0, -1).join(".");
+              link.download = `${fileName}_enc.png`; // ファイル名に_encを追加
+              link.click();
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+
+      document
+        .getElementById("extractButton")
+        .addEventListener("click", function () {
+          const fileInput = document.getElementById("fileInput");
+          const file = fileInput.files[0];
+          if (!file) {
+            alert("ファイルを選択してください。");
+            return;
+          }
+
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            const img = new Image();
+            img.onload = function () {
+              const canvas = document.createElement("canvas");
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0);
+              const imageData = ctx.getImageData(
+                0,
+                0,
+                canvas.width,
+                canvas.height
+              );
+              const extractedMessage = extractMessage(imageData);
+              if (isValidMessage(extractedMessage)) {
+                document.getElementById("outputArea").textContent =
+                  "抽出されたメッセージ: " + extractedMessage;
+              } else {
+                document.getElementById("outputArea").textContent =
+                  "メッセージが抽出されませんでした";
+              }
+            };
+            img.src = e.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+
+      function textToBinary(text) {
+        const binaryLength = text.length.toString(2).padStart(16, "0");
+        let binary = binaryLength;
+        for (let i = 0; i < text.length; i++) {
+          const charCode = text.charCodeAt(i);
+          binary += charCode.toString(2).padStart(16, "0");
+        }
+        return binary;
+      }
+
+      function embedMessage(imageData, binaryMessage) {
+        for (let i = 0; i < binaryMessage.length; i += 3) {
+          const index = i / 3;
+          const red = imageData.data[index * 4];
+          const green = imageData.data[index * 4 + 1];
+          const blue = imageData.data[index * 4 + 2];
+          const binary =
+            binaryMessage.charAt(i) +
+            binaryMessage.charAt(i + 1) +
+            binaryMessage.charAt(i + 2);
+          imageData.data[index * 4] =
+            (red & 0xfe) | parseInt(binary.charAt(0), 2);
+          imageData.data[index * 4 + 1] =
+            (green & 0xfe) | parseInt(binary.charAt(1), 2);
+          imageData.data[index * 4 + 2] =
+            (blue & 0xfe) | parseInt(binary.charAt(2), 2);
+        }
+      }
+
+      function isValidMessage(message) {
+        return message.trim() !== "" && !/[\uFFFD]/.test(message);
+      }
+
+      function isMessageEmbedded(imageData) {
+        let binaryMessage = "";
+        for (let i = 0; i < imageData.data.length / 4; i++) {
+          const red = imageData.data[i * 4] & 0x01;
+          const green = imageData.data[i * 4 + 1] & 0x01;
+          const blue = imageData.data[i * 4 + 2] & 0x01;
+          binaryMessage += red.toString() + green.toString() + blue.toString();
+        }
+        // メッセージの長さ情報を抽出
+        const messageLength = parseInt(binaryMessage.substring(0, 16), 2);
+        // メッセージの長さが65535であるか、またはバイナリデータが正しくメッセージの長さを表していない場合には、メッセージは埋め込まれていないと判断
+        if (
+          messageLength === 65535 ||
+          binaryMessage.length < 16 + messageLength * 16
+        ) {
+          return false;
+        }
+        return true;
+      }
+
+      function extractMessage(imageData) {
+        let binaryMessage = "";
+        for (let i = 0; i < imageData.data.length / 4; i++) {
+          const red = imageData.data[i * 4] & 0x01;
+          const green = imageData.data[i * 4 + 1] & 0x01;
+          const blue = imageData.data[i * 4 + 2] & 0x01;
+          binaryMessage += red.toString() + green.toString() + blue.toString();
+        }
+        // メッセージの長さ情報を抽出
+        const messageLength = parseInt(binaryMessage.substring(0, 16), 2);
+        console.log("抽出されたメッセージの長さ:", messageLength);
+        // メッセージの長さが0であるか、またはバイナリデータが正しくメッセージの長さを表していない場合には空の文字列を返す
+        if (
+          messageLength === 65535 ||
+          binaryMessage.length < 16 + messageLength * 16
+        ) {
+          return ""; // メッセージが存在しない場合に空の文字列を返す
+        }
+        // メッセージの長さに基づいてバイナリデータを解釈
+        return binaryToText(
+          binaryMessage.substring(16, 16 + messageLength * 16)
+        );
+      }
+
+      function binaryToText(binary) {
+        let text = "";
+        for (let i = 0; i < binary.length; i += 16) {
+          const byte = binary.substr(i, 16);
+          const charCode = parseInt(byte, 2);
+          // 無効なUnicode文字をチェック
+          if (charCode >= 0xd800 && charCode <= 0xdfff) {
+            continue; // 無効なUnicode文字をスキップ
+          }
+          text += String.fromCharCode(charCode);
+        }
+        console.log("バイナリから変換されたテキスト:", text);
+        return text;
+      }
+    </script>
+  </body>
+</html>
