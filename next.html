@@ -33,6 +33,12 @@
           class="w-full py-2 px-4 rounded mb-4"
         />
       </div>
+      <!-- チェックボタンを追加 -->
+      <div>
+        <input type="checkbox" id="myCheckbox" />
+        <label for="myCheckbox">Twitterに投稿する</label>
+      </div>
+
       <div>
         <button
           id="embedButton"
@@ -68,10 +74,19 @@
             const img = new Image();
             img.onload = function () {
               const canvas = document.createElement("canvas");
-              canvas.width = img.width;
-              canvas.height = img.height;
               const ctx = canvas.getContext("2d");
-              ctx.drawImage(img, 0, 0);
+
+              // "Twitterに投稿する"チェックボックスがチェックされている場合は、画像のサイズを800x800pxに設定
+              if (document.getElementById("myCheckbox").checked) {
+                canvas.width = 800;
+                canvas.height = 800;
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              } else {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+              }
+
               const imageData = ctx.getImageData(
                 0,
                 0,
@@ -227,18 +242,25 @@
       function binaryToText(binary) {
         let text = "";
         for (let i = 0; i < binary.length; i += 16) {
-          if (i + 16 > binary.length) break; // 追加した行: 残りのバイナリ文字列が16ビット未満の場合はスキップします
+          if (i + 16 > binary.length) break;
           const byte = binary.substr(i, 16);
           const charCode = parseInt(byte, 2);
-          // 無効なUnicode文字をチェック
           if (
             (charCode >= 0xd800 && charCode <= 0xdfff) ||
             charCode === 0x0007
           ) {
-            continue; // 無効なUnicode文字をスキップ
+            continue;
           }
-          // 有効なUnicode文字を追加
-          text += String.fromCharCode(charCode);
+          const highSurrogate =
+            Math.floor((charCode - 0x10000) / 0x400) + 0xd800;
+          const lowSurrogate = ((charCode - 0x10000) % 0x400) + 0xdc00;
+          if (0xd800 <= charCode && charCode <= 0xdbff) {
+            text +=
+              String.fromCharCode(highSurrogate) +
+              String.fromCharCode(lowSurrogate);
+          } else {
+            text += String.fromCharCode(charCode);
+          }
         }
         console.log("バイナリから変換されたテキスト:", text);
         return text;
