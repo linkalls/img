@@ -143,25 +143,6 @@
         return binary;
       }
 
-      function embedMessage(imageData, binaryMessage) {
-        for (let i = 0; i < binaryMessage.length; i += 3) {
-          const index = i / 3;
-          const red = imageData.data[index * 4];
-          const green = imageData.data[index * 4 + 1];
-          const blue = imageData.data[index * 4 + 2];
-          const binary =
-            binaryMessage.charAt(i) +
-            binaryMessage.charAt(i + 1) +
-            binaryMessage.charAt(i + 2);
-          imageData.data[index * 4] =
-            (red & 0xfe) | parseInt(binary.charAt(0), 2);
-          imageData.data[index * 4 + 1] =
-            (green & 0xfe) | parseInt(binary.charAt(1), 2);
-          imageData.data[index * 4 + 2] =
-            (blue & 0xfe) | parseInt(binary.charAt(2), 2);
-        }
-      }
-
       function isValidMessage(message) {
         return message.trim() !== "" && !/[\uFFFD]/.test(message);
       }
@@ -186,39 +167,77 @@
         return true;
       }
 
+      function embedMessage(imageData, binaryMessage) {
+        // メッセージの長さをアルファチャンネルにエンコード
+        const messageLengthBinary = (binaryMessage.length / 16)
+          .toString(2)
+          .padStart(32, "0"); // バイナリデータの長さを文字列の長さに変換
+        for (let i = 0; i < messageLengthBinary.length; i += 2) {
+          const index = i / 2;
+          const alpha = imageData.data[index * 4 + 3];
+          const binary =
+            messageLengthBinary.charAt(i) + messageLengthBinary.charAt(i + 1);
+          imageData.data[index * 4 + 3] = (alpha & 0xfc) | parseInt(binary, 2);
+        }
+
+        // メッセージをRGBチャンネルにエンコード
+        for (let i = 0; i < binaryMessage.length; i += 3) {
+          const index = i / 3 + messageLengthBinary.length / 2;
+          const red = imageData.data[index * 4];
+          const green = imageData.data[index * 4 + 1];
+          const blue = imageData.data[index * 4 + 2];
+          const binary =
+            binaryMessage.charAt(i) +
+            binaryMessage.charAt(i + 1) +
+            binaryMessage.charAt(i + 2);
+          imageData.data[index * 4] =
+            (red & 0xfe) | parseInt(binary.charAt(0), 2);
+          imageData.data[index * 4 + 1] =
+            (green & 0xfe) | parseInt(binary.charAt(1), 2);
+          imageData.data[index * 4 + 2] =
+            (blue & 0xfe) | parseInt(binary.charAt(2), 2);
+        }
+      }
+
       function extractMessage(imageData) {
+        // メッセージの長さをアルファチャンネルからデコード
+        let messageLengthBinary = "";
+        for (let i = 0; i < 32; i += 2) {
+          const index = i / 2;
+          const alpha = imageData.data[index * 4 + 3];
+          messageLengthBinary += (alpha & 0x03).toString(2).padStart(2, "0");
+        }
+        const messageLength = parseInt(messageLengthBinary, 2) * 16; // 文字列の長さをバイナリデータの長さに変換
+        // メッセージをRGBチャンネルからデコード
         let binaryMessage = "";
-        for (let i = 0; i < imageData.data.length / 4; i++) {
-          const red = imageData.data[i * 4] & 0x01;
-          const green = imageData.data[i * 4 + 1] & 0x01;
-          const blue = imageData.data[i * 4 + 2] & 0x01;
-          binaryMessage += red.toString() + green.toString() + blue.toString();
+        for (let i = 0; i < messageLength; i += 3) {
+          const index = i / 3 + 32 / 2;
+          const red = imageData.data[index * 4];
+          const green = imageData.data[index * 4 + 1];
+          const blue = imageData.data[index * 4 + 2];
+          binaryMessage +=
+            (red & 0x01).toString() +
+            (green & 0x01).toString() +
+            (blue & 0x01).toString();
         }
-        // メッセージの長さ情報を抽出
-        const messageLength = parseInt(binaryMessage.substring(0, 16), 2);
-        console.log("抽出されたメッセージの長さ:", messageLength);
-        // メッセージの長さが0であるか、またはバイナリデータが正しくメッセージの長さを表していない場合には空の文字列を返す
-        if (
-          messageLength === 65535 ||
-          binaryMessage.length < 16 + messageLength * 16
-        ) {
-          return ""; // メッセージが存在しない場合に空の文字列を返す
-        }
-        // メッセージの長さに基づいてバイナリデータを解釈
-        return binaryToText(
-          binaryMessage.substring(16, 16 + messageLength * 16)
-        );
+
+        return binaryToText(binaryMessage);
       }
 
       function binaryToText(binary) {
         let text = "";
         for (let i = 0; i < binary.length; i += 16) {
+          if (i + 16 > binary.length) break; // 追加した行: 残りのバイナリ文字列が16ビット未満の場合はスキップします
           const byte = binary.substr(i, 16);
           const charCode = parseInt(byte, 2);
           // 無効なUnicode文字をチェック
-          if (charCode >= 0xd800 && charCode <= 0xdfff) {
+          if (
+            (charCode >= 0xd800 && charCode <= 0xdfff) ||
+            charCode === 0x0007
+          ) {
             continue; // 無効なUnicode文字をスキップ
           }
+          // 有効なUnicode文字を追加
           text += String.fromCharCode(charCode);
         }
         console.log("バイナリから変換されたテキスト:", text);
