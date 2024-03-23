@@ -149,11 +149,22 @@
         });
 
       function textToBinary(text) {
-        const binaryLength = text.length.toString(2).padStart(16, "0");
-        let binary = binaryLength;
+        let binary = "";
         for (let i = 0; i < text.length; i++) {
           const charCode = text.charCodeAt(i);
-          binary += charCode.toString(2).padStart(16, "0");
+          if (0xd800 <= charCode && charCode <= 0xdbff) {
+            const highSurrogate = charCode;
+            const lowSurrogate = text.charCodeAt(i + 1);
+            const surrogatePair =
+              (highSurrogate - 0xd800) * 0x400 +
+              lowSurrogate -
+              0xdc00 +
+              0x10000;
+            binary += surrogatePair.toString(2).padStart(32, "0");
+            i++; // サロゲートペアの次の文字をスキップ
+          } else {
+            binary += charCode.toString(2).padStart(16, "0");
+          }
         }
         return binary;
       }
