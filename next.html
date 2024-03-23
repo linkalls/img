@@ -138,6 +138,9 @@
               if (isValidMessage(extractedMessage)) {
                 document.getElementById("outputArea").textContent =
                   "抽出されたメッセージ: " + extractedMessage;
+              } else if (extractedMessage === "") {
+                document.getElementById("outputArea").textContent =
+                  "メッセージが見当たりません";
               } else {
                 document.getElementById("outputArea").textContent =
                   "メッセージが抽出されませんでした";
